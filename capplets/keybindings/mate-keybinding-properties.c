@@ -1408,27 +1408,6 @@ description_edited_callback (GtkCellRendererText *renderer,
     key_entry->desc_editable = FALSE;
 }
 
-
-typedef struct
-{
-  GtkTreeView *tree_view;
-  GtkTreePath *path;
-  GtkTreeViewColumn *column;
-} IdleData;
-
-static gboolean
-real_start_editing_cb (IdleData *idle_data)
-{
-  gtk_widget_grab_focus (GTK_WIDGET (idle_data->tree_view));
-  gtk_tree_view_set_cursor (idle_data->tree_view,
-                idle_data->path,
-                idle_data->column,
-                TRUE);
-  gtk_tree_path_free (idle_data->path);
-  g_free (idle_data);
-  return FALSE;
-}
-
 static gboolean
 edit_custom_shortcut (KeyEntry *key)
 {
@@ -1717,16 +1696,9 @@ start_editing_cb (GtkTreeView    *tree_view,
                      &path, &column,
                      NULL, NULL))
     {
-      IdleData *idle_data;
       GtkTreeModel *model;
       GtkTreeIter iter;
       KeyEntry *key;
-
-      if (gtk_tree_path_get_depth (path) == 1)
-    {
-      gtk_tree_path_free (path);
-      return FALSE;
-    }
 
       model = gtk_tree_view_get_model (tree_view);
       gtk_tree_model_get_iter (model, &iter, path);
@@ -1747,15 +1719,15 @@ start_editing_cb (GtkTreeView    *tree_view,
         }
       else
         {
-          idle_data = g_new (IdleData, 1);
-          idle_data->tree_view = tree_view;
-          idle_data->path = path;
-          idle_data->column = key->desc_editable ? column :
-                              gtk_tree_view_get_column (tree_view, 1);
-          g_idle_add ((GSourceFunc) real_start_editing_cb, idle_data);
-          block_accels = TRUE;
+          gtk_widget_grab_focus (GTK_WIDGET (tree_view));
+          gtk_tree_view_set_cursor (tree_view,
+                                    path,
+                                    key->desc_editable ? column :
+                                    gtk_tree_view_get_column (tree_view, 1),
+                                    TRUE);
         }
       g_signal_stop_emission_by_name (tree_view, "button_press_event");
+      gtk_tree_path_free (path);
     }
   return TRUE;
 }
