@@ -44,7 +44,6 @@ capplets/display/org.mate.randr.policy.in
 capplets/display/xrandr-capplet.c
 capplets/keybindings/00-multimedia-key.xml.in
 capplets/keybindings/01-desktop-key.xml.in
-capplets/keybindings/eggcellrendererkeys.c
 capplets/keybindings/mate-keybinding-properties.c
 [type: gettext/glade]capplets/keybindings/mate-keybinding-properties.ui
 capplets/keybindings/mate-keybinding.desktop.in.in

@@ -5,11 +5,7 @@ bin_PROGRAMS = mate-keybinding-properties
 
 mate_keybinding_properties_LDADD = $(MATECC_CAPPLETS_LIBS)
 mate_keybinding_properties_SOURCES = \
-	mate-keybinding-properties.c \
-	eggcellrendererkeys.c \
-	eggcellrendererkeys.h \
-	eggaccelerators.c \
-	eggaccelerators.h
+	mate-keybinding-properties.c
 
 @INTLTOOL_DESKTOP_RULE@
 
