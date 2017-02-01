@@ -15,7 +15,6 @@
 
 #include "wm-common.h"
 #include "capplet-util.h"
-#include "eggcellrendererkeys.h"
 #include "activate-settings-daemon.h"
 #include "dconf-util.h"
 
@@ -75,7 +74,7 @@ typedef struct
   char *gsettings_key;
   guint keyval;
   guint keycode;
-  EggVirtualModifierType mask;
+  GdkModifierType mask;
   gboolean editable;
   GtkTreeModel *model;
   char *description;
@@ -116,17 +115,17 @@ create_builder (void)
   return builder;
 }
 
-static char* binding_name(guint keyval, guint keycode, EggVirtualModifierType mask, gboolean translate)
+static char* binding_name(guint keyval, guint keycode, GdkModifierType mask, gboolean translate)
 {
     if (keyval != 0 || keycode != 0)
     {
         if (translate)
         {
-            return egg_virtual_accelerator_label (keyval, keycode, mask);
+            return gtk_accelerator_get_label_with_keycode (NULL, keyval, keycode, mask);
         }
         else
         {
-            return egg_virtual_accelerator_name (keyval, keycode, mask);
+            return gtk_accelerator_name_with_keycode (NULL, keyval, keycode, mask);
         }
     }
     else
@@ -139,7 +138,7 @@ static gboolean
 binding_from_string (const char             *str,
                      guint                  *accelerator_key,
              guint          *keycode,
-                     EggVirtualModifierType *accelerator_mods)
+                     GdkModifierType *accelerator_mods)
 {
   g_return_val_if_fail (accelerator_key != NULL, FALSE);
 
@@ -151,7 +150,11 @@ binding_from_string (const char             *str,
       return TRUE;
     }
 
-  egg_accelerator_parse_virtual (str, accelerator_key, keycode, accelerator_mods);
+  guint *keycodes;
+
+  gtk_accelerator_parse_with_keycode (str, accelerator_key, &keycodes, accelerator_mods);
+  *keycode = (keycodes ? keycodes[0] : 0);
+  g_free (keycodes);
 
   if (*accelerator_key == 0)
     return FALSE;
@@ -180,8 +183,8 @@ accel_set_func (GtkTreeViewColumn *tree_column,
     g_object_set (cell,
           "visible", TRUE,
           "editable", FALSE,
-          "accel_key", key_entry->keyval,
-          "accel_mask", key_entry->mask,
+          "accel-key", key_entry->keyval,
+          "accel-mods", key_entry->mask,
           "keycode", key_entry->keycode,
           "style", PANGO_STYLE_ITALIC,
           NULL);
@@ -189,8 +192,8 @@ accel_set_func (GtkTreeViewColumn *tree_column,
     g_object_set (cell,
           "visible", TRUE,
           "editable", TRUE,
-          "accel_key", key_entry->keyval,
-          "accel_mask", key_entry->mask,
+          "accel-key", key_entry->keyval,
+          "accel-mods", key_entry->mask,
           "keycode", key_entry->keycode,
           "style", PANGO_STYLE_NORMAL,
           NULL);
@@ -1195,7 +1198,7 @@ static void show_error(GtkWindow* parent, GError* err)
   gtk_widget_destroy (dialog);
 }
 
-static void accel_edited_callback(GtkCellRendererText* cell, const char* path_string, guint keyval, EggVirtualModifierType mask, guint keycode, gpointer data)
+static void accel_edited_callback(GtkCellRendererText* cell, const char* path_string, guint keyval, GdkModifierType mask, guint keycode, gpointer data)
 {
     GtkTreeView* view = (GtkTreeView*) data;
     GtkTreeModel* model;
@@ -1220,7 +1223,7 @@ static void accel_edited_callback(GtkCellRendererText* cell, const char* path_st
     }
 
     /* CapsLock isn't supported as a keybinding modifier, so keep it from confusing us */
-    mask &= ~EGG_VIRTUAL_LOCK_MASK;
+    mask &= ~GDK_LOCK_MASK;
 
     tmp_key.model  = model;
     tmp_key.keyval = keyval;
@@ -1272,11 +1275,11 @@ static void accel_edited_callback(GtkCellRendererText* cell, const char* path_st
             gtk_widget_destroy (dialog);
 
             /* set it back to its previous value. */
-            egg_cell_renderer_keys_set_accelerator(
-                EGG_CELL_RENDERER_KEYS(cell),
-                key_entry->keyval,
-                key_entry->keycode,
-                key_entry->mask);
+            g_object_set (G_OBJECT (cell),
+                          "accel-key", key_entry->keyval,
+                          "keycode", key_entry->keycode,
+                          "accel-mods", key_entry->mask,
+                          NULL);
             return;
         }
     }
@@ -1326,11 +1329,11 @@ static void accel_edited_callback(GtkCellRendererText* cell, const char* path_st
         else
         {
             /* set it back to its previous value. */
-            egg_cell_renderer_keys_set_accelerator(
-                EGG_CELL_RENDERER_KEYS(cell),
-                key_entry->keyval,
-                key_entry->keycode,
-                key_entry->mask);
+            g_object_set (G_OBJECT (cell),
+                          "accel-key", key_entry->keyval,
+                          "keycode", key_entry->keycode,
+                          "accel-mods", key_entry->mask,
+                          NULL);
         }
 
         return;
@@ -1860,8 +1863,8 @@ setup_dialog (GtkBuilder *builder, GSettings *marco_settings)
   gtk_tree_view_append_column (treeview, column);
   gtk_tree_view_column_set_sort_column_id (column, DESCRIPTION_COLUMN);
 
-  renderer = (GtkCellRenderer *) g_object_new (EGG_TYPE_CELL_RENDERER_KEYS,
-                           "accel_mode", EGG_CELL_RENDERER_KEYS_MODE_X,
+  renderer = (GtkCellRenderer *) g_object_new (GTK_TYPE_CELL_RENDERER_ACCEL,
+                           "accel-mode", GTK_CELL_RENDERER_ACCEL_MODE_OTHER,
                            NULL);
 
   g_signal_connect (renderer, "accel_edited",
