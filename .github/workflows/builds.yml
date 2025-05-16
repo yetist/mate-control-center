@@ -1,0 +1,316 @@
+name: CI Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+# cancel already running builds of the same branch or pull request
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.head_ref || github.sha }}
+  cancel-in-progress: true
+
+env:
+  MATE_DESKTOP_DEP: 1.28.2
+  CONFIGURE_FLAGS: --enable-compile-warnings=maximum
+  CFLAGS: -g -O2 -Werror=pointer-arith -Werror=implicit-function-declaration
+  JOBS: 2
+  # Useful URL: https://github.com/mate-desktop/debian-packages
+  # Useful URL: https://salsa.debian.org/debian-mate-team/mate-control-center
+  DEB_LIBRARY_DEPS: |
+    libayatana-appindicator3-dev
+    libcanberra-gtk3-dev
+    libdconf-dev
+    libglib2.0-dev
+    libgtk-3-dev
+    libgtop2-dev
+    libmarco-dev
+    libmate-desktop-dev
+    libmate-menu-dev
+    libmatekbd-dev
+    libpango1.0-dev
+    libpolkit-gobject-1-dev
+    librsvg2-bin
+    librsvg2-dev
+    libstartup-notification0-dev
+    libsystemd-dev
+    libudisks2-dev
+    libx11-dev
+    libxcursor-dev
+    libxi-dev
+    libxklavier-dev
+    libxml2-dev
+    libxrandr-dev
+    libxss-dev
+    libxt-dev
+  DEB_BUILD_DEPS: |
+    autoconf-archive
+    autopoint
+    ccache
+    clang
+    clang-tools
+    cppcheck
+    curl
+    desktop-file-utils
+    gettext
+    git
+    gobject-introspection
+    intltool
+    make
+    mate-common
+    pkexec
+    polkitd
+    python3-lxml
+    shared-mime-info
+    xsltproc
+  # mate-desktop dependencies
+  DEB_LIBRARY_DEPS_MATE_DESKTOP: |
+    libgirepository1.0-dev   yelp-tools
+  # mate-desktop dependencies
+  DEB_BUILD_DEPS_MATE_DESKTOP: |
+    iso-codes
+    gobject-introspection
+  # Useful URL: https://gitlab.archlinux.org/archlinux/packaging/packages/mate-control-center
+  ARCH_BUILD_DEPS: |
+    autoconf-archive
+    ccache
+    clang
+    file
+    gcc
+    git
+    glib2-devel
+    gobject-introspection
+    intltool
+    itstool
+    libayatana-appindicator
+    libxss
+    libgtop
+    libmatekbd
+    make
+    marco
+    mate-common
+    mate-menus
+    polkit
+    udisks2
+    which
+    yelp-tools
+  # mate-desktop dependencies
+  ARCH_BUILD_DEPS_MATE_DESKTOP: |
+    iso-codes
+    gobject-introspection
+  FEDORA_BUILD_DEPS: |
+    autoconf-archive
+    accountsservice-devel
+    cairo-gobject-devel
+    ccache
+    clang
+    clang-analyzer
+    cppcheck-htmlreport
+    dconf-devel
+    desktop-file-utils
+    gcc
+    git
+    gobject-introspection-devel
+    gtk3-devel
+    iso-codes-devel
+    itstool
+    libappindicator-gtk3-devel
+    libSM-devel
+    libXScrnSaver-devel
+    libcanberra-devel
+    libmatekbd-devel
+    libgtop2-devel
+    librsvg2-devel
+    librsvg2-tools
+    libudisks2-devel
+    make
+    marco-devel
+    mate-menus-devel
+    polkit-devel
+    python3-lxml
+    mate-common
+    redhat-rpm-config
+    startup-notification-devel
+    systemd-devel
+    which
+  # mate-desktop dependencies
+  FEDORA_BUILD_DEPS_MATE_DESKTOP: |
+    iso-codes
+    gobject-introspection
+
+jobs:
+  build:
+    name: Build on ${{matrix.container}} (using ${{matrix.cc}})
+    runs-on: ubuntu-latest
+    container: ${{matrix.container}}
+
+    strategy:
+      fail-fast: false # don't cancel other jobs in the matrix if one fails
+      matrix:
+        container:
+          [
+            "debian:testing",
+            "fedora:rawhide",
+            "ubuntu:rolling",
+            "archlinux:latest",
+          ]
+        cc: ["gcc"]
+        cxx: ["g++"]
+        include:
+          # test with clang on archlinux:latest
+          - container: "archlinux:latest"
+            cc: "clang"
+            cxx: "clang++"
+
+    env:
+      # Speed up build with ccache
+      CC: ccache ${{matrix.cc}}
+      CXX: ccache ${{matrix.cxx}}
+      # root install path for the mate-desktop dependency
+      MATE_DESKTOP_INSTALL_PATH: ${{github.workspace}}/mate-desktop-install
+
+    steps:
+      # output variable to do so.
+      - name: Setup environment
+        run: |
+          echo "PATH=${MATE_DESKTOP_INSTALL_PATH}/bin:${PATH}" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${MATE_DESKTOP_INSTALL_PATH}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
+      # For Debian and Ubuntu (apt-based with reasonably compatible packages)
+      - name: Install dependencies
+        if: ${{ startsWith(matrix.container, 'debian:') || startsWith(matrix.container, 'ubuntu:') }}
+        run: |
+          apt-get update -qq
+          apt-get install --assume-yes --no-install-recommends \
+            ${DEB_BUILD_DEPS} ${DEB_BUILD_DEPS_MATE_DESKTOP} \
+            ${DEB_LIBRARY_DEPS} ${DEB_LIBRARY_DEPS_MATE_DESKTOP}
+
+      # For ArchLinux
+      - name: Install dependencies
+        if: ${{ startsWith(matrix.container, 'archlinux:') }}
+        # don't upgrade, although told otherwise (see link below), because
+        # apparently in the container it doesn't quit work...
+        # https://wiki.archlinux.org/title/System_maintenance#Partial_upgrades_are_unsupported
+        run: |
+          pacman --noconfirm -Syu
+          pacman --noconfirm -S ${ARCH_BUILD_DEPS} ${ARCH_BUILD_DEPS_MATE_DESKTOP}
+
+      # For Fedora
+      - name: Install dependencies
+        if: ${{ startsWith(matrix.container, 'fedora:') }}
+        run: |
+          dnf update -y
+          dnf install -y ${FEDORA_BUILD_DEPS} ${FEDORA_BUILD_DEPS_MATE_DESKTOP}
+
+      # Checkout the repository
+      - uses: actions/checkout@v3
+        with:
+          path: mate-control-center
+          submodules: true
+
+      # Setup ccache cache
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.container }}-${{ matrix.cc }}
+
+      #### Start: Cache the build of the mate-desktop dependency ####
+      - name: Cache mate-desktop v${{env.MATE_DESKTOP_DEP}} dependency
+        uses: actions/cache@v3
+        id: cache-mate-desktop
+        with:
+          path: ${{env.MATE_DESKTOP_INSTALL_PATH}}
+          # We try and be as specific as possible not to use the wrongly cached
+          # build, as this is a *binary*.
+          key: ${{runner.os}}-${{runner.arch}}-${{matrix.container}}-build-mate-desktop-${{env.MATE_DESKTOP_DEP}}
+
+      # Checkout mate-desktop dep, if not already cached
+      - name: Checkout mate-desktop v${{env.MATE_DESKTOP_DEP}}
+        uses: actions/checkout@v3
+        if: ${{ steps.cache-mate-desktop.outputs.cache-hit != 'true' }}
+        with:
+          repository: mate-desktop/mate-desktop
+          ref: v${{env.MATE_DESKTOP_DEP}}
+          path: mate-desktop
+          submodules: true
+
+      # Build and install mate-desktop dep, if not already cached
+      - name: Install mate-desktop v${{env.MATE_DESKTOP_DEP}}
+        if: ${{ steps.cache-mate-desktop.outputs.cache-hit != 'true' }}
+        run: |
+          cd mate-desktop
+          NOCONFIGURE=1 ./autogen.sh
+          { ./configure --prefix="${MATE_DESKTOP_INSTALL_PATH}" || { cat config.log; exit 1; } ; }
+          make -j ${{ env.JOBS }}
+          make -j ${{ env.JOBS }} install
+      #### End: Cache the build of the mate-desktop dependency ####
+      # Follows regular mate-control-center build and test steps
+      - name: Configure
+        run: |
+          cd mate-control-center
+          NOCONFIGURE=1 ./autogen.sh
+          { ./configure ${CONFIGURE_FLAGS} || { cat config.log; exit 1; } ; }
+
+      - name: Build
+        run: make -C mate-control-center -j ${{ env.JOBS }}
+
+      - name: Run Tests
+        run: make -C mate-control-center -j ${{ env.JOBS }} check
+
+      - name: Run distcheck
+        # We only run distcheck on one container, because it takes time and
+        # doesn't seem so useful to repeat everywhere -- it mostly checks the
+        # build system itself, rather than the build.
+        if: ${{ startsWith(matrix.container, 'debian:') }}
+        run: make -C mate-control-center -j ${{ env.JOBS }} distcheck
+
+  # Do we need the real build for cppcheck run?  I don't think so
+  cppcheck:
+    name: Run cppcheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      # Install code dependencies so that cppcheck has more info
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --assume-yes --no-install-recommends \
+            cppcheck ${DEB_LIBRARY_DEPS}
+
+      # - define relevant configuration I can think of
+      #   - _Noreturn: this is to avoid false positive with functions that
+      #     don't return, like g_assert(false).  Here, we rely on G_NORETURN
+      #     (GLib 2.68+) using _Noreturn C11 attribute if __STDC_VERSION__ is
+      #     high enough (cppcheck sets it for us in newer versions, but not on
+      #     here yet); but the version of cppcheck we run on don't know about
+      #     the C11 attribute, so map it to the GCC one it does know.
+      #     This is a tad over-specific, but it removes some spurious warnings,
+      #     and defining e.g. __GNUC__=12 is simpler, but is a *lot* slower
+      #     (more than 3 times slower), and doesn't seem to yield other
+      #     benefits for the moment.
+      # - -I flags from pkg-config (grepped from configure.ac)
+      # - ignore non-source directories
+      - name: cppcheck
+        env:
+          checks: warning,style,performance,portability,information,missingInclude
+          defines: |
+            -DGETTEXT_PACKAGE="mate-control-center"
+            -D__STDC_VERSION__=201112 -D_Noreturn=__attribute__((__noreturn__))
+          packages: |
+            gio-2.0
+            gio-unix-2.0
+            gtk+-3.0
+        run: |
+          cppcheck --enable="$checks"                       \
+            -j $JOBS                                        \
+            $defines                                        \
+            $(pkg-config --cflags-only-I $packages)         \
+            .
