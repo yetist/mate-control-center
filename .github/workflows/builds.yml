@@ -15,6 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  MATE_DESKTOP_DEP: 1.28.2
   CONFIGURE_FLAGS: --enable-compile-warnings=maximum
   CFLAGS: -g -O2 -Werror=pointer-arith -Werror=implicit-function-declaration
   JOBS: 2
@@ -66,10 +67,17 @@ env:
     python3-lxml
     shared-mime-info
     xsltproc
-    yelp-tools
+  # mate-desktop dependencies
+  DEB_LIBRARY_DEPS_MATE_DESKTOP: |
+    libgirepository1.0-dev   yelp-tools
+  # mate-desktop dependencies
+  DEB_BUILD_DEPS_MATE_DESKTOP: |
+    iso-codes
+    gobject-introspection
   # Useful URL: https://gitlab.archlinux.org/archlinux/packaging/packages/mate-control-center
   ARCH_BUILD_DEPS: |
     autoconf-archive
+    ccache
     clang
     file
     gcc
@@ -88,10 +96,15 @@ env:
     udisks2
     which
     yelp-tools
+  # mate-desktop dependencies
+  ARCH_BUILD_DEPS_MATE_DESKTOP: |
+    iso-codes
+    gobject-introspection
   FEDORA_BUILD_DEPS: |
     autoconf-archive
     accountsservice-devel
     cairo-gobject-devel
+    ccache
     clang
     clang-analyzer
     cppcheck-htmlreport
@@ -122,6 +135,10 @@ env:
     startup-notification-devel
     systemd-devel
     which
+  # mate-desktop dependencies
+  FEDORA_BUILD_DEPS_MATE_DESKTOP: |
+    iso-codes
+    gobject-introspection
 
 jobs:
   build:
@@ -151,15 +168,24 @@ jobs:
       # Speed up build with ccache
       CC: ccache ${{matrix.cc}}
       CXX: ccache ${{matrix.cxx}}
+      # root install path for the mate-desktop dependency
+      MATE_DESKTOP_INSTALL_PATH: ${{github.workspace}}/mate-desktop-install
 
     steps:
+      # output variable to do so.
+      - name: Setup environment
+        run: |
+          echo "PATH=${MATE_DESKTOP_INSTALL_PATH}/bin:${PATH}" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${MATE_DESKTOP_INSTALL_PATH}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
       # For Debian and Ubuntu (apt-based with reasonably compatible packages)
       - name: Install dependencies
         if: ${{ startsWith(matrix.container, 'debian:') || startsWith(matrix.container, 'ubuntu:') }}
         run: |
           apt-get update -qq
           apt-get install --assume-yes --no-install-recommends \
-            ${DEB_BUILD_DEPS} ${DEB_LIBRARY_DEPS}
+            ${DEB_BUILD_DEPS} ${DEB_BUILD_DEPS_MATE_DESKTOP} \
+            ${DEB_LIBRARY_DEPS} ${DEB_LIBRARY_DEPS_MATE_DESKTOP}
 
       # For ArchLinux
       - name: Install dependencies
@@ -169,14 +195,14 @@ jobs:
         # https://wiki.archlinux.org/title/System_maintenance#Partial_upgrades_are_unsupported
         run: |
           pacman --noconfirm -Syu
-          pacman --noconfirm -S ${ARCH_BUILD_DEPS}
+          pacman --noconfirm -S ${ARCH_BUILD_DEPS} ${ARCH_BUILD_DEPS_MATE_DESKTOP}
 
       # For Fedora
       - name: Install dependencies
         if: ${{ startsWith(matrix.container, 'fedora:') }}
         run: |
           dnf update -y
-          dnf install -y ${FEDORA_BUILD_DEPS}
+          dnf install -y ${FEDORA_BUILD_DEPS} ${FEDORA_BUILD_DEPS_MATE_DESKTOP}
 
       # Checkout the repository
       - uses: actions/checkout@v3
@@ -190,8 +216,37 @@ jobs:
         with:
           key: ${{ matrix.container }}-${{ matrix.cc }}
 
-      # Follows regular build and test steps
+      #### Start: Cache the build of the mate-desktop dependency ####
+      - name: Cache mate-desktop v${{env.MATE_DESKTOP_DEP}} dependency
+        uses: actions/cache@v3
+        id: cache-mate-desktop
+        with:
+          path: ${{env.MATE_DESKTOP_INSTALL_PATH}}
+          # We try and be as specific as possible not to use the wrongly cached
+          # build, as this is a *binary*.
+          key: ${{runner.os}}-${{runner.arch}}-${{matrix.container}}-build-mate-desktop-${{env.MATE_DESKTOP_DEP}}
 
+      # Checkout mate-desktop dep, if not already cached
+      - name: Checkout mate-desktop v${{env.MATE_DESKTOP_DEP}}
+        uses: actions/checkout@v3
+        if: ${{ steps.cache-mate-desktop.outputs.cache-hit != 'true' }}
+        with:
+          repository: mate-desktop/mate-desktop
+          ref: v${{env.MATE_DESKTOP_DEP}}
+          path: mate-desktop
+          submodules: true
+
+      # Build and install mate-desktop dep, if not already cached
+      - name: Install mate-desktop v${{env.MATE_DESKTOP_DEP}}
+        if: ${{ steps.cache-mate-desktop.outputs.cache-hit != 'true' }}
+        run: |
+          cd mate-desktop
+          NOCONFIGURE=1 ./autogen.sh
+          { ./configure --prefix="${MATE_DESKTOP_INSTALL_PATH}" || { cat config.log; exit 1; } ; }
+          make -j ${{ env.JOBS }}
+          make -j ${{ env.JOBS }} install
+      #### End: Cache the build of the mate-desktop dependency ####
+      # Follows regular mate-control-center build and test steps
       - name: Configure
         run: |
           cd mate-control-center
