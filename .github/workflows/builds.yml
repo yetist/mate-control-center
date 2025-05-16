@@ -309,9 +309,8 @@ jobs:
             gio-unix-2.0
             gtk+-3.0
         run: |
-          pwd
-          ls
           cppcheck --enable="$checks"                       \
             -j $JOBS                                        \
             $defines                                        \
-            $(pkg-config --cflags-only-I $packages)
+            $(pkg-config --cflags-only-I $packages)         \
+            .
