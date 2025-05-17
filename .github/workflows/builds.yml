@@ -19,6 +19,7 @@ env:
   SHA: ${{ github.sha }}
   CACHE_PATH: /tmp/.cache
   JOBS: 2
+  GITHUB_CONTEXT: ${{ toJson(github) }}
 
 jobs:
   build:
