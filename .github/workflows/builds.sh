@@ -54,8 +54,11 @@ if [ -f meson.build ]; then
 	infoend
 
 	infobegin "Dist (meson)"
-	git status
+	id
+	pwd
 	ls -ltra
+	ls -ltra ..
+	git status
 	#ninja -C _build dist
 	infoend
 fi
