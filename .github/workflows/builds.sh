@@ -14,6 +14,25 @@ infoend() {
 	echo "::endgroup::"
 }
 
+if [ -f meson.build ]; then
+
+	infobegin "Configure (meson)"
+	meson setup _build --prefix=/usr
+	infoend
+
+	infobegin "Build (meson)"
+	meson compile -C _build
+	infoend
+
+	infobegin "Test (meson)"
+	ninja -C _build test
+	infoend
+
+	infobegin "Dist (meson)"
+	ninja -C _build dist
+	infoend
+fi
+
 if [ -f autogen.sh ]; then
 	infobegin "Configure (autotools)"
 	NOCONFIGURE=1 ./autogen.sh
@@ -36,24 +55,5 @@ if [ -f autogen.sh ]; then
 
 	infobegin "Distcheck (autotools)"
 	make -j ${CPUS} distcheck
-	infoend
-fi
-
-if [ -f meson.build ]; then
-
-	infobegin "Configure (meson)"
-	meson setup _build --prefix=/usr
-	infoend
-
-	infobegin "Build (meson)"
-	meson compile -C _build
-	infoend
-
-	infobegin "Test (meson)"
-	ninja -C _build test
-	infoend
-
-	infobegin "Dist (meson)"
-	ninja -C _build dist
 	infoend
 fi
