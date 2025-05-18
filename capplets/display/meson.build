@@ -10,7 +10,13 @@ sources += gnome.compile_resources(
   export: true
 )
 
-sources += gnome.genmarshal('foo-marshal', prefix : 'foo_marshal', sources : 'foo-marshal.list')
+marshalers = gnome.genmarshal(
+'foo-marshal',
+  prefix : 'foo_marshal',
+  sources : 'foo-marshal.list')
+
+marshal_h = marshalers[1]
+
 cflags = [
   '-DDATADIR="@0@"'.format(mcc_datadir),
   '-DMATECC_DATA_DIR="@0@"'.format(mcc_pkgdatadir),
@@ -20,7 +26,7 @@ cflags = [
 
 executable(
   'mate-display-properties',
-  sources : sources,
+  sources : [sources, marshalers],
   include_directories: config_inc,
   dependencies : [common_deps, libcommon_dep],
   c_args : cflags,
