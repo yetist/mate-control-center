@@ -10,7 +10,12 @@ sources += gnome.compile_resources(
   export: true
 )
 
-sources += gnome.genmarshal('foo-marshal', prefix : 'foo_marshal', sources : 'foo-marshal.list')
+foo_marshals = gnome.genmarshal(
+'foo-marshal',
+  prefix : 'foo_marshal',
+  sources : 'foo-marshal.list')
+
+sources += foo_marshals[1]
 cflags = [
   '-DDATADIR="@0@"'.format(mcc_datadir),
   '-DMATECC_DATA_DIR="@0@"'.format(mcc_pkgdatadir),
