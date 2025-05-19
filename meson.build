@@ -1,6 +1,6 @@
 project(
   'mate-control-center', 'c',
-        version : '1.29.0',
+        version : '1.30.0',
   meson_version : '>= 0.57.0'
 )
 
